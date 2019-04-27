@@ -9,6 +9,7 @@
 
 package io.vlingo.http.resource;
 
+import io.vlingo.common.Completes;
 import io.vlingo.http.*;
 import io.vlingo.http.sample.user.NameData;
 import org.junit.Rule;
@@ -20,12 +21,14 @@ import java.util.Collections;
 
 import static io.vlingo.common.Completes.withSuccess;
 import static io.vlingo.http.Response.Status.Created;
+import static io.vlingo.http.Response.Status.Imateapot;
 import static io.vlingo.http.Response.of;
 import static io.vlingo.http.resource.ParameterResolver.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
 public class RequestHandler0Test extends RequestHandlerTestBase {
+
   @Rule
   public ExpectedException thrown = ExpectedException.none();
 
@@ -33,7 +36,7 @@ public class RequestHandler0Test extends RequestHandlerTestBase {
   public void simpleHandler() {
     final RequestHandler0 handler = new RequestHandler0(Method.GET, "/helloworld")
       .handle(() -> withSuccess(of(Created)));
-    final Response response = handler.execute().outcome();
+    final Response response = handler.execute(logger).outcome();
 
     assertNotNull(handler);
     assertEquals(Method.GET, handler.method);
@@ -42,13 +45,16 @@ public class RequestHandler0Test extends RequestHandlerTestBase {
   }
 
   @Test
-  public void throwExceptionWhenNoHandlerIsDefined() {
-    thrown.expect(HandlerMissingException.class);
-    thrown.expectMessage("No handle defined for GET /helloworld");
-
-    final RequestHandler0 handler = new RequestHandler0(Method.GET, "/helloworld");
-
-    handler.execute();
+  public void errorHandlerInvoked() {
+    final RequestHandler0 handler = new RequestHandler0(Method.GET, "/helloworld")
+      .handle(() -> {
+        throw new RuntimeException("Test Handler exception");
+      })
+      .onError(
+        (error) -> Completes.withSuccess(Response.of(Response.Status.Imateapot))
+    );
+    Completes<Response> responseCompletes = handler.execute(logger);
+    assertResponsesAreEquals(Response.of(Imateapot), responseCompletes.await());
   }
 
   @Test
@@ -69,7 +75,7 @@ public class RequestHandler0Test extends RequestHandlerTestBase {
 
     final RequestHandler0 handler = new RequestHandler0(Method.GET, "/helloworld")
       .handle(() -> withSuccess(of(Created)));
-    final Response response = handler.execute(request, mappedParameters).outcome();
+    final Response response = handler.execute(request, mappedParameters, logger).outcome();
 
     assertNotNull(handler);
     assertEquals(Method.GET, handler.method);
@@ -112,6 +118,24 @@ public class RequestHandler0Test extends RequestHandlerTestBase {
 
     assertResolvesAreEquals(body(NameData.class), handler.resolver);
     assertEquals(new NameData("John", "Doe"), handler.resolver.apply(request, mappedParameters));
+  }
+
+  @Test
+  public void addingHandlerBodyWithMapper() {
+    final Request request = Request.has(Method.POST)
+                                   .and(URI.create("/user/admin/name"))
+                                   .and(Body.from("{\"given\":\"John\",\"family\":\"Doe\"}"))
+                                   .and(Version.Http1_1);
+    final Action.MappedParameters mappedParameters =
+      new Action.MappedParameters(1, Method.POST, "ignored", Collections.singletonList(
+        new Action.MappedParameter("String", "admin"))
+      );
+
+    final RequestHandler1<NameData> handler1 = new RequestHandler0(Method.GET, "/user/admin/name")
+      .body(NameData.class, TestMapper.class);
+
+    assertResolvesAreEquals(body(NameData.class, new TestMapper()), handler1.resolver);
+    assertEquals(new NameData("John", "Doe"), handler1.resolver.apply(request, mappedParameters));
   }
 
   @Test

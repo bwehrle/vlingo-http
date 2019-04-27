@@ -9,11 +9,18 @@
 
 package io.vlingo.http.resource;
 
-import io.vlingo.http.Response;
-
 import static org.junit.Assert.assertEquals;
 
+import io.vlingo.actors.Logger;
+import io.vlingo.http.Response;
+
 public class RequestHandlerTestBase {
+
+  protected Logger logger;
+
+  RequestHandlerTestBase() {
+    this.logger = Logger.testLogger();
+  }
 
   void assertResponsesAreEquals(final Response expected, final Response actual) {
     assertEquals(expected.toString(), actual.toString());

@@ -9,12 +9,14 @@
 
 package io.vlingo.http.resource;
 
+import io.vlingo.actors.Logger;
 import io.vlingo.common.Completes;
 import io.vlingo.http.Method;
 import io.vlingo.http.Request;
 import io.vlingo.http.Response;
 
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,8 +33,43 @@ public abstract class RequestHandler {
     this.actionSignature = generateActionSignature(parameterResolvers);
   }
 
+  Completes<Response> defaultErrorResponse() {
+    return Completes.withSuccess(Response.of(Response.Status.InternalServerError));
+  }
+
+  void checkHandlerOrThrowException(Object handler) {
+    if (handler == null) {
+      throw new HandlerMissingException("No handle defined for " + method.toString() + " " + path);
+    }
+  }
+
   abstract Completes<Response> execute(final Request request,
-                                       final Action.MappedParameters mappedParameters);
+                                       final Action.MappedParameters mappedParameters,
+                                       final Logger logger);
+
+
+  Completes<Response> executeRequest(Supplier<Completes<Response>> executeAction,
+                                     ErrorHandler errorHandler,
+                                     Logger logger) {
+    Completes<Response> responseCompletes;
+    try {
+      responseCompletes = executeAction.get();
+    } catch(Exception exception) {
+      if (errorHandler != null) {
+        try {
+          responseCompletes = errorHandler.handle(exception);
+        } catch (Exception errorHandlerException) {
+          logger.log("Exception thrown by error handler when handling error", exception);
+          responseCompletes = defaultErrorResponse();
+        }
+      } else {
+        logger.log("Exception thrown by Resource execution", exception);
+        responseCompletes = defaultErrorResponse();
+      }
+    }
+    return responseCompletes;
+  }
+
 
   private String generateActionSignature(final List<ParameterResolver<?>> parameterResolvers) {
     checkOrder(parameterResolvers);
@@ -67,6 +104,14 @@ public abstract class RequestHandler {
       if(firstNonPathResolver && resolver.type == ParameterResolver.Type.PATH) {
         throw new IllegalArgumentException("Path parameters are unsorted");
       }
+    }
+  }
+
+  protected Mapper mapperFrom(final Class<? extends Mapper> mapperClass) {
+    try {
+      return mapperClass.newInstance();
+    } catch (Exception e) {
+      throw new IllegalArgumentException("Cannot instantiate mapper class: " + mapperClass.getName());
     }
   }
 }

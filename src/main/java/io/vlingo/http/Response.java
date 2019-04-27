@@ -97,7 +97,7 @@ public class Response {
     return builder.toString();
   }
   
-  Response(final Version version, final Status status, final Headers<ResponseHeader> headers, final Body entity) {
+  protected Response(final Version version, final Status status, final Headers<ResponseHeader> headers, final Body entity) {
     this.version = version;
     this.status = status;
     this.statusCode = status.value.substring(0, status.value.indexOf(' '));
@@ -108,11 +108,9 @@ public class Response {
 
   private void addMissingContentLengthHeader() {
     final int contentLength = entity.content.length();
-    if (contentLength > 0) {
-      final Header header = headers.headerOf(ResponseHeader.ContentLength);
-      if (header == null) {
-        headers.add(ResponseHeader.of(ResponseHeader.ContentLength, Integer.toString(contentLength)));
-      }
+    final Header header = headers.headerOf(ResponseHeader.ContentLength);
+    if (header == null) {
+      headers.add(ResponseHeader.of(ResponseHeader.ContentLength, Integer.toString(contentLength)));
     }
   }
 
